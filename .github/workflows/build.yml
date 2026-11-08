@@ -1,0 +1,72 @@
+name: Build CA-2020 v1
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get JUCE
+        shell: bash
+        run: |
+          git config --global advice.detachedHead false
+          git clone --depth 1 --branch 8.0.8 https://github.com/juce-framework/JUCE.git JUCE \
+            || git clone --depth 1 --branch 8.0.4 https://github.com/juce-framework/JUCE.git JUCE
+          test -f JUCE/CMakeLists.txt && echo "JUCE ready"
+
+      - name: Check files
+        shell: bash
+        run: |
+          for f in CMakeLists.txt Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/LFamilyLook.h \
+                   Source/engine/ChordArpEngine.h Source/engine/Styles.h Source/engine/Theory.h \
+                   Source/engine/PreviewSynth.h Resources/icon.png installer/CA2020.iss; do
+            test -f "$f" || { echo "ERROR: $f is missing - upload it from the CA-2020 package"; exit 1; }
+          done
+          echo "All files found."
+
+      - name: Configure
+        run: cmake -S . -B build -A x64
+
+      - name: Build plugin and app
+        run: cmake --build build --config Release --parallel
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" }
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress; $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" }
+          & $iscc installer\CA2020.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CA-2020-Windows
+          path: |
+            installer/Output/*.exe
+            build/CA2020_artefacts/Release/VST3/**
+            build/CA2020_artefacts/Release/Standalone/*.exe
+
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Get JUCE
+        run: |
+          git clone --depth 1 --branch 8.0.8 https://github.com/juce-framework/JUCE.git JUCE \
+            || git clone --depth 1 --branch 8.0.4 https://github.com/juce-framework/JUCE.git JUCE
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+      - name: Package
+        run: bash installer/make_pkg.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CA-2020-macOS
+          path: installer/CA2020-*-macOS.pkg
