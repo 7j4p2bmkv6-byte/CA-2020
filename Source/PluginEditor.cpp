@@ -343,7 +343,8 @@ void CA2020Editor::renameUser()
     renameWindow->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
     renameWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
     renameWindow->setLookAndFeel (&laf);
-    renameWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this, slot] (int r)
+    juce::Component::SafePointer<CA2020Editor> safeThis (this);
+    renameWindow->enterModalState (true, juce::ModalCallbackFunction::create ([this, slot, safeThis] (int r)
     {
         if (r == 1 && renameWindow != nullptr)
         {
@@ -352,7 +353,7 @@ void CA2020Editor::renameUser()
             renameWindow->getTextEditorContents ("name").substring (0, 38).copyToUTF8 (p.name, sizeof (p.name) - 1);
             proc.setUserProgression (slot, p);
         }
-        juce::MessageManager::callAsync ([sp = juce::Component::SafePointer<CA2020Editor> (this)] { if (sp) sp->renameWindow.reset(); });
+        juce::MessageManager::callAsync ([safeThis] { if (safeThis != nullptr) safeThis->renameWindow.reset(); });
     }), false);
 }
 
